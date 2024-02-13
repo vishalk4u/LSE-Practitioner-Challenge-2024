@@ -1,0 +1,483 @@
+---
+title: "equity correlations"
+author: '21840'
+date: "2024-02-13"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## 1.2 Method 2
+
+This method assume return is approximately equal to $\log(closed \; price \;- \;opened \; price) \; * \;  \#  \; shares$, and equity to be $closed \; price \; * \# \; shares$; so, ROE is approximately equal to $\left(\frac{\log(closed \; price \;- \;opened \; price)}{closed \; price}\right)$
+
+```{r}
+library(tidyquant)
+library(timetk)
+library(lubridate)
+library(PerformanceAnalytics)
+# Multiple stocks
+# Downloading stock market data for multiple stocks.
+
+# Setting our stock symbols to a variable
+tickers <- c("VALE", "PBR", "ITUB", "ABCB", "GIVSY", "EC")
+
+# Download the stock price data
+multi_stocks <- tq_get(tickers, from = "2013-01-01", to = "2018-03-01", get = "stock.prices")
+
+# Joining the company_info data with the multi_stocks data frame
+company_info <- data.frame(
+  symbol = c("VALE", "PBR", "ITUB", "ABCB", "GIVSY", "EC"),
+  Sector = c("Basic Materials", "Energy", "Bank", "Bank", "Insurance", "Energy"),
+  Fsector = c("Non_Financial", "Non_Financial", "Financial", "Financial", "Financial", "Non_Financial"),
+  Country = c("Brazil", "Brazil", "Brazil", "Brazil", "Colombia", "Colombia")
+)
+
+multi_stocks <- multi_stocks %>%
+  left_join(company_info, by = "symbol")
+
+
+# Calculating the monthly returns for multiple stocks
+multi_stock_monthly_returns <- multi_stocks %>%
+  group_by(symbol) %>%
+  # We are grouping the stocks by symbol
+  tq_transmute(select = adjusted, mutate_fun = periodReturn, period = 'monthly', col_rename = 'returns')
+
+multi_stock_monthly_returns_wide <- pivot_wider(data = multi_stock_monthly_returns, 
+                                                names_from = symbol, 
+                                                values_from = returns)
+
+ggpairs(multi_stock_monthly_returns_wide)
+library(ggplot2)
+library(GGally)
+
+multi_stock_monthly_returns
+# Calculating the correlation
+multi_stock_monthly_returns %>%
+  spread(symbol, value = returns) %>%
+  tk_xts(silent = TRUE) %>%
+  cor()
+
+
+
+# How to filter out requested data (build a function)
+
+# then calculate the correlation coefficient (using window method)
+
+# get average of them
+
+
+```
+
+# 2. Latest Code Method
+
+## Data Frame Preparation and EDA
+
+```{r}
+library(tidyquant)
+library(dplyr)
+library(timetk)
+library(lubridate)
+library(PerformanceAnalytics)
+
+# Setting our stock symbols to a variable
+tickers <- c("VALE", "PBR", "ITUB", "ABCB", "GIVSY", "EC")
+
+# Download the stock price data
+multi_stocks <- tq_get(tickers, from = "2013-01-01", to = "2018-03-01", get = "stock.prices")
+
+# Define company_info data frame
+company_info <- data.frame(
+  symbol = c("VALE", "PBR", "ITUB", "ABCB", "GIVSY", "EC"),
+  Sector = c("Basic Materials", "Energy", "Bank", "Bank", "Insurance", "Energy"),
+  Fsector = c("Non_Financial", "Non_Financial", "Financial", "Financial", "Financial", "Non_Financial"),
+  Country = c("Brazil", "Brazil", "Brazil", "Brazil", "Colombia", "Colombia")
+)
+
+# Joining company_info data with the multi_stocks data frame
+multi_stocks <- left_join(multi_stocks, company_info, by = "symbol")
+
+# Calculate Return and ROE
+multi_stocks$Return <- multi_stocks$close - multi_stocks$open
+multi_stocks$ROE <- multi_stocks$Return / multi_stocks$adjusted
+
+# Create the multi_stock_ROE data frame
+multi_stock_ROE <- select(multi_stocks, symbol, date, Return, ROE, Sector, Fsector, Country)
+
+multi_stock_ROE_wide <- multi_stock_ROE %>%
+  select(date, symbol, ROE) %>%
+  pivot_wider(names_from = symbol, values_from = ROE)
+
+ggpairs(multi_stock_ROE_wide)
+```
+
+## Global correlation coefficient: Calculate_cross_country_sector_ROE_correlation
+
+```{r}
+library(ggplot2)
+library(GGally)
+
+GCC <- function(multi_stock_ROE) {
+  library(dplyr)
+  
+  # Initialize a vector to store correlation values
+  correlation_values <- numeric()
+  
+  # Create all possible pairs of companies from different countries and sectors
+
+  
+  for (i in 1:nrow(company_pairs)) {
+    for (j in 1:nrow(company_pairs)) {
+      if (company_pairs$Country[i] != company_pairs$Country[j] && company_pairs$Sector[i] != company_pairs$Sector[j]) {
+        # Extract company data for both pairs
+        data_i <- filter(multi_stock_ROE, Country == company_pairs$Country[i], Sector == company_pairs$Sector[i])
+        data_j <- filter(multi_stock_ROE, Country == company_pairs$Country[j], Sector == company_pairs$Sector[j])
+        
+        # Ensure there's data to compare
+        if (nrow(data_i) > 0 && nrow(data_j) > 0) {
+          # Need a common key to join on, assuming 'date' can serve this purpose
+          data_combined <- merge(data_i, data_j, by = "date", suffixes = c("_i", "_j"))
+          
+          # Calculate correlation for each company pair and store it
+          if (nrow(data_combined) > 1) {  # Ensure there are at least 2 data points to calculate correlation
+            cor_val <- cor(data_combined$ROE_i, data_combined$ROE_j, use = "complete.obs")
+            correlation_values <- c(correlation_values, cor_val)
+          }
+        }
+      }
+    }
+  }
+  
+  # Calculate and return the average of all correlation values
+  average_correlation <- mean(correlation_values, na.rm = TRUE)
+  
+  return(average_correlation)
+}
+
+
+```
+
+## Country Correlation coefficient: Calculate_within_country_cross_sector_ROE_correlation
+
+```{r}
+# !!!!! Correlation Calculation and Filtering 
+
+# Same country different sector
+
+CCC <- function(multi_stock_ROE) {
+  library(tidyr)
+  library(dplyr)
+  
+  # Initialize an empty list to store correlation results for each country
+  correlations_list <- list()
+  
+  # Get unique countries
+  countries <- unique(multi_stock_ROE$Country)
+  
+  for (country in countries) {
+    # Filter data for the current country
+    country_data <- subset(multi_stock_ROE, Country == country)
+    
+    # Get unique sectors within the country
+    sectors <- unique(country_data$Sector)
+    
+    # Initialize an empty vector to store correlations for the current country
+    country_correlations <- numeric()
+    
+    for (i in 1:(length(sectors) - 1)) {
+      for (j in (i + 1):length(sectors)) {
+        # Filter data for each sector
+        sector_i_data <- subset(country_data, Sector == sectors[i])
+        sector_j_data <- subset(country_data, Sector == sectors[j])
+        
+        # Convert each sector's data to wide format
+        
+        sector_i_data_wide <- sector_i_data %>%
+  select(date, symbol, ROE) %>%
+  pivot_wider(names_from = symbol, values_from = ROE)
+        
+        sector_j_data_wide <- sector_j_data %>%
+  select(date, symbol, ROE) %>%
+  pivot_wider(names_from = symbol, values_from = ROE)
+        
+        
+        # Ensure date alignment and completeness
+        # This might require additional steps to ensure the dates align properly and that
+        # there are no missing values, which could affect correlation calculations
+        
+        # Calculate correlations for each pair of companies between sectors i and j
+        # This requires that the data for each company within the sectors is in the same order
+        
+        # Assuming we have at least one company per sector and the data is aligned
+        if (ncol(sector_i_data_wide) > 1 && ncol(sector_j_data_wide) > 1) {
+          for (col_i in 2:ncol(sector_i_data_wide)) {
+            for (col_j in 2:ncol(sector_j_data_wide)) {
+              # Calculate correlation between the two companies
+              cor_val <- cor(sector_i_data_wide[[col_i]], sector_j_data_wide[[col_j]], use = "complete.obs")
+              
+              # Store the correlation value
+              country_correlations <- c(country_correlations, cor_val)
+            }
+          }
+        }
+      }
+    }
+    
+    # Store correlations for the current country in the list
+    correlations_list[[country]] <- country_correlations
+  }
+  
+  # Calculate the average of all correlations
+  all_correlations <- unlist(correlations_list)
+  average_correlation <- mean(all_correlations, na.rm = TRUE)
+  
+  return(average_correlation)
+}
+
+# average_correlation_result <- calculate_ROE_correlations(multi_stock_ROE)
+# print(average_correlation_result)
+## Correlation part Window moving?     
+
+```
+
+## Financial sector correlation coefficient: Calculate_within_country_Financial_sector_ROE_correlation
+
+```{r}
+FSCC <-  function(multi_stock_ROE) {
+  library(tidyr)
+  library(dplyr)
+  
+  # Initialize an empty list to store correlation results for each country
+  correlations_list <- list()
+  
+  multi_stock_ROE <- subset(multi_stock_ROE, Fsector == "Financial")
+  
+  # Get unique countries
+  countries <- unique(multi_stock_ROE$Country)
+  
+  for (country in countries) {
+    # Filter data for the current country
+    country_data <- subset(multi_stock_ROE, Country == country)
+    
+    # Get unique sectors within the country
+    sectors <- unique(country_data$Sector)
+    
+    # Initialize an empty vector to store correlations for the current country
+    country_correlations <- numeric()
+    
+    for (i in 1:(length(sectors) - 1)) {
+      for (j in (i + 1):length(sectors)) {
+        # Filter data for each sector
+        sector_i_data <- subset(country_data, Sector == sectors[i])
+        sector_j_data <- subset(country_data, Sector == sectors[j])
+        
+        # Convert each sector's data to wide format
+        
+        sector_i_data_wide <- sector_i_data %>%
+                              select(date, symbol, ROE) %>%
+                              pivot_wider(names_from = symbol, values_from = ROE)
+        
+        sector_j_data_wide <- sector_j_data %>%
+                              select(date, symbol, ROE) %>%
+                              pivot_wider(names_from = symbol, values_from = ROE)
+        
+        
+        # Ensure date alignment and completeness
+        # This might require additional steps to ensure the dates align properly and that
+        # there are no missing values, which could affect correlation calculations
+        
+        # Calculate correlations for each pair of companies between sectors i and j
+        # This requires that the data for each company within the sectors is in the same order
+        
+        # Assuming we have at least one company per sector and the data is aligned
+        if (ncol(sector_i_data_wide) > 1 && ncol(sector_j_data_wide) > 1) {
+          for (col_i in 2:ncol(sector_i_data_wide)) {
+            for (col_j in 2:ncol(sector_j_data_wide)) {
+              # Calculate correlation between the two companies
+              cor_val <- cor(sector_i_data_wide[[col_i]], sector_j_data_wide[[col_j]], use = "complete.obs")
+              
+              # Store the correlation value
+              country_correlations <- c(country_correlations, cor_val)
+            }
+          }
+        }
+      }
+    }
+    
+    # Store correlations for the current country in the list
+    correlations_list[[country]] <- country_correlations
+  }
+  
+  # Calculate the average of all correlations
+  all_correlations <- unlist(correlations_list)
+  average_correlation <- mean(all_correlations, na.rm = TRUE)
+  
+  return(average_correlation)
+}
+```
+
+## Non Financial sector correlation coefficient: Calculate_WithinCountry_NonFinancial_sector_ROE_correlation
+
+```{r}
+NFSCC <-  function(multi_stock_ROE) {
+  library(tidyr)
+  library(dplyr)
+  
+  # Initialize an empty list to store correlation results for each country
+  correlations_list <- list()
+  
+  multi_stock_ROE <- subset(multi_stock_ROE, Fsector == "Non_Financial")
+  
+  # Get unique countries
+  countries <- unique(multi_stock_ROE$Country)
+  
+  for (country in countries) {
+    # Filter data for the current country
+    country_data <- subset(multi_stock_ROE, Country == country)
+    
+    # Get unique sectors within the country
+    sectors <- unique(country_data$Sector)
+    
+    # Initialize an empty vector to store correlations for the current country
+    country_correlations <- numeric()
+    
+    for (i in 1:(length(sectors) - 1)) {
+      for (j in (i + 1):length(sectors)) {
+        # Filter data for each sector
+        sector_i_data <- subset(country_data, Sector == sectors[i])
+        sector_j_data <- subset(country_data, Sector == sectors[j])
+        
+        # Convert each sector's data to wide format
+        
+        sector_i_data_wide <- sector_i_data %>%
+                              select(date, symbol, ROE) %>%
+                              pivot_wider(names_from = symbol, values_from = ROE)
+        
+        sector_j_data_wide <- sector_j_data %>%
+                              select(date, symbol, ROE) %>%
+                              pivot_wider(names_from = symbol, values_from = ROE)
+        
+        
+        # Ensure date alignment and completeness
+        # This might require additional steps to ensure the dates align properly and that
+        # there are no missing values, which could affect correlation calculations
+        
+        # Calculate correlations for each pair of companies between sectors i and j
+        # This requires that the data for each company within the sectors is in the same order
+        
+        # Assuming we have at least one company per sector and the data is aligned
+        if (ncol(sector_i_data_wide) > 1 && ncol(sector_j_data_wide) > 1) {
+          for (col_i in 2:ncol(sector_i_data_wide)) {
+            for (col_j in 2:ncol(sector_j_data_wide)) {
+              # Calculate correlation between the two companies
+              cor_val <- cor(sector_i_data_wide[[col_i]], sector_j_data_wide[[col_j]], use = "complete.obs")
+              
+              # Store the correlation value
+              country_correlations <- c(country_correlations, cor_val)
+            }
+          }
+        }
+      }
+    }
+    
+    # Store correlations for the current country in the list
+    correlations_list[[country]] <- country_correlations
+  }
+  
+  # Calculate the average of all correlations
+  all_correlations <- unlist(correlations_list)
+  average_correlation <- mean(all_correlations, na.rm = TRUE)
+  
+  return(average_correlation)
+}
+```
+
+Integrating moving window correlation analysis into the function
+
+```{r}
+library(tidyr)
+library(dplyr)
+library(zoo)
+
+library(tibble)
+
+# Enhanced function for window moving correlation analysis
+CCC_moving_correlation <- function(multi_stock_ROE, window_size = 5) {
+  # Initialize an empty list to store correlation results for each country
+  correlations_list <- list()
+  
+  # Get unique countries
+  countries <- unique(multi_stock_ROE$Country)
+  
+  for (country in countries) {
+    # Filter data for the current country
+    country_data <- subset(multi_stock_ROE, Country == country)
+    
+    # Get unique sectors within the country
+    sectors <- unique(country_data$Sector)
+    
+    # Initialize an empty list to store correlations for the current country
+    country_correlations <- list()
+    
+    for (i in 1:(length(sectors) - 1)) {
+      for (j in (i + 1):length(sectors)) {
+        # Filter data for each sector
+        sector_i_data <- subset(country_data, Sector == sectors[i])
+        sector_j_data <- subset(country_data, Sector == sectors[j])
+        
+        # Convert each sector's data to wide format and then to ts (time series)
+        sector_i_data_ts <- sector_i_data %>%
+          select(date, symbol, ROE) %>%
+          pivot_wider(names_from = symbol, values_from = ROE) %>%
+          column_to_rownames("date") %>%
+          as.data.frame() %>%
+          apply(2, as.numeric) %>%
+          na.omit() %>% # Removing NA values
+          zoo(order.by = as.Date(rownames(.)))
+
+        sector_j_data_ts <- sector_j_data %>%
+          select(date, symbol, ROE) %>%
+          pivot_wider(names_from = symbol, values_from = ROE) %>%
+          column_to_rownames("date") %>%
+          as.data.frame() %>%
+          apply(2, as.numeric) %>%
+          na.omit() %>% # Removing NA values
+          zoo(order.by = as.Date(rownames(.)))
+        
+        # Ensure at least one company per sector for calculation
+        if (ncol(sector_i_data_ts) > 0 && ncol(sector_j_data_ts) > 0) {
+          for (col_i in 1:ncol(sector_i_data_ts)) {
+            for (col_j in 1:ncol(sector_j_data_ts)) {
+              # Calculate rolling correlation between the two companies
+              rolling_cor <- rollapply(data = merge(sector_i_data_ts[, col_i], sector_j_data_ts[, col_j], all = FALSE),
+                                       width = window_size,
+                                       FUN = function(x) cor(x[, 1], x[, 2], use = "complete.obs"),
+                                       by.column = FALSE, align = "right")
+              
+              # Store the rolling correlation values
+              sector_pair_name <- paste(colnames(sector_i_data_ts)[col_i], "_", colnames(sector_j_data_ts)[col_j], sep = "")
+              country_correlations[[sector_pair_name]] <- rolling_cor
+            }
+          }
+        }
+      }
+    }
+    
+    # Store correlations for the current country in the list
+    correlations_list[[country]] <- country_correlations
+  }
+  
+  # Return the list containing rolling correlations for each country
+  return(correlations_list)
+}
+
+CCC_moving_correlation(multi_stock_ROE, window_size = 5)
+
+
+CCC_moving_correlation(multi_stock_ROE)
+
+colname()
+
+```
