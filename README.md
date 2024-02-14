@@ -22,6 +22,7 @@ REQUIREMENTS:
 -	Computer code should be produced in an open-source programing language.
 -	Final deliverable should include: description of the methodology with detailed steps, data files and program code scripts.
 -	Final Correlation estimates should possess an acceptable level of statistical significance.
+
 DEFINITIONS:
 -	Correlation coefficient: numerical value that reflects the strength of the relationship between two variables.
 -	Return: Return on Assets or Return on Equity.
