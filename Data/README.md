@@ -1,1 +1,1 @@
-This folder contains the data used for Pyhton code for default and asset correlation.
+This folder contains the data used for Python code for default and asset correlation.
