@@ -1,1 +1,1 @@
-This folder contains the Final Report of the project.
+This folder contains the final report of the project.
